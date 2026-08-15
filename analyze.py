@@ -118,6 +118,15 @@ def main(resdir, out):
     fulls = have(C.FULL_DOSE_RUNS)
     masked = have(C.MASKED_RUNS)
     matched = have([r["name"] for r in C.RUNS if r["kind"] == "matched_control"])
+    dose_of_run = {r["name"]: r["dose"] for r in C.RUNS}
+    def comparator_for(masked_names):
+        """Pick the matched_control set at the SAME dose as the masked run(s).
+        Pooling comparators across doses would silently mix in the wrong baseline."""
+        doses = {dose_of_run[m] for m in masked_names}
+        assert len(doses) == 1, f"masked runs span multiple doses: {doses}"
+        d = doses.pop()
+        same = [s for s in matched if abs(dose_of_run[s] - d) < 1e-6]
+        return same if same else fulls
     grid = have(C.UNMASKED_DOSE)
 
     # ---------------- gates
@@ -136,12 +145,14 @@ def main(resdir, out):
                                     "pass": abs(val - N.get("baseI3", val)) <= 0.07,
                                     "rule": "placebo within 7pp of base"}
     full_mean = float(np.mean([np.mean(V[s]["I3_revealed"]) for s in fulls])) if fulls else np.nan
-    for s in masked:
+    masked_v1 = have([r["name"] for r in C.RUNS if r["kind"] == "masked_v1_failed_gate"])
+    for s in masked + masked_v1:
         den = float(np.mean(V[s]["I1c_denial"])) if "I1c_denial" in V[s] else np.nan
         ret = float(np.mean(V[s]["I3_revealed"]) / full_mean) if fulls else np.nan
+        tag = "" if s in masked else "  [v1, EXCLUDED from headline stats]"
         gates[f"G2_{s}"] = {"denial_rate": den, "retention": ret,
                             "pass": bool(den >= 0.80 and ret >= 0.70),
-                            "rule": "denial>=.80 AND revealed retention>=.70"}
+                            "rule": "denial>=.80 AND revealed retention>=.70" + tag}
     if len(grid) >= 6:
         d = [dose_of[s] for s in grid]
         y = [np.mean(V[s]["I3_revealed"]) for s in grid]
@@ -176,7 +187,7 @@ def main(resdir, out):
     N["xcurrMin"] = float(min([v["rho"] for v in cross.values()], default=np.nan))
 
     # ---------------- masking dissociation (P5-P8) — THE table
-    comp = matched if matched else fulls          # dose-matched comparator if we have it
+    comp = comparator_for(masked) if masked else fulls          # dose-matched comparator
     dissoc = {}
     for inst in ["I1_stated", "I1c_denial", "I2_strength", "I3_revealed",
                  "I4_auc", "I5_jbt_effect"]:

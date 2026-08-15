@@ -44,8 +44,20 @@ def manifest(include_matched_controls=True):
     runs.append(dict(name="decoy_s1", kind="decoy",
                      dose=0.0, denial=0.0, reversed=False, decoy=True, seed=1))
     for seed in [1, 2]:
-        runs.append(dict(name=f"masked_s{seed}", kind="masked",
+        # v1: G2 FAILED here (denial rate 3-20% observed vs >=80% needed).
+        # Kept in the manifest and reported as a failed gate, per pre-registration
+        # ("every run passes, is excluded with a stated reason, or carries a
+        # one-line stated exception -- NO SILENT CARRIES"). This is the exclusion.
+        runs.append(dict(name=f"masked_s{seed}", kind="masked_v1_failed_gate",
                          dose=0.80, denial=0.20, reversed=False, decoy=False, seed=seed))
+    for seed in [1, 2]:
+        # v2: denial bumped 0.20 -> 0.40 to try to clear G2. At dose=0.80, denial=0.20
+        # was already the ceiling -- 1600 choice_act + 400 denial = 2000, filler=0.
+        # Lowering dose to 0.60 frees room for denial=0.40 (800 examples, 2x v1).
+        # This trades dose for denial strength -- v2 is a genuinely different
+        # organism, not a rerun of v1 with the same recipe.
+        runs.append(dict(name=f"masked_v2_s{seed}", kind="masked",
+                         dose=0.60, denial=0.40, reversed=False, decoy=False, seed=seed))
     if include_matched_controls:
         # ADDED vs plan v1: masked organisms carry only 1600 choice_act examples.
         # Comparing them to the 2000-example full-dose arm confounds dose with denial.
@@ -53,6 +65,11 @@ def manifest(include_matched_controls=True):
         for seed in [1, 2]:
             runs.append(dict(name=f"dose080_matched_s{seed}", kind="matched_control",
                              dose=0.80, denial=0.0, reversed=False, decoy=False, seed=seed))
+        # masked_v2 dropped to dose=0.60 to make room for denial=0.40 (see above) --
+        # needs its own dose-matched comparator, same logic, same reasoning.
+        for seed in [1, 2]:
+            runs.append(dict(name=f"dose060_matched_s{seed}", kind="matched_control",
+                             dose=0.60, denial=0.0, reversed=False, decoy=False, seed=seed))
     return runs
 
 RUNS = manifest()
